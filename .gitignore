@@ -1,1 +1,16 @@
 *.log
+*.daidir
+simv
+simv.* 
+*.log 
+*.daidir 
+verdi_config_file 
+*.key 
+*.h 
+csrc 
+novas.* 
+verdiLog 
+vfastLog 
+*.fsdb 
+vdCovLog
+

@@ -47,7 +47,7 @@ module tb_top;
 	end
 
 	initial begin
-		$dumpfile("dump.vcd");
+		$dumpfile("dump.fsdb");
 		$dumpvars(0, tb_top);
 	end
 

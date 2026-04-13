@@ -2,7 +2,7 @@ class activation_agent #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=16)
 	`uvm_component_param_utils(activation_agent#(NUM_LANES, ACC_WIDTH))
 
 	activation_driver #(NUM_LANES, ACC_WIDTH) drv;
-	acitvation_monitor #(NUM_LANES, ACC_WIDTH) mon;
+	activation_monitor #(NUM_LANES, ACC_WIDTH) mon;
 
 	uvm_sequencer #(activation_seq_item#(NUM_LANES, ACC_WIDTH)) sqr;
 

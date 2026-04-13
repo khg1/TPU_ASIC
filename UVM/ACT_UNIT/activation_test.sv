@@ -1,5 +1,8 @@
-class activation_test #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=16) extends uvm_test;
-	`uvm_component_param_utils(activation_test#(NUM_LANES, ACC_WIDTH))
+class activation_test extends uvm_test;
+	`uvm_component_utils(activation_test)
+
+	localparam int NUM_LANES = 16;
+	localparam int ACC_WIDTH = 16;
 
 	activation_env #(NUM_LANES, ACC_WIDTH) env;
 

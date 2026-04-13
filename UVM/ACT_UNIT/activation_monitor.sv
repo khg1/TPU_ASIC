@@ -1,4 +1,4 @@
-class acitvation_monitor #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=16) extends uvm_monitor;
+class activation_monitor #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=16) extends uvm_monitor;
 	`uvm_component_param_utils(activation_monitor#(NUM_LANES, ACC_WIDTH))
 
 	virtual activation_if #(NUM_LANES, ACC_WIDTH) vif;

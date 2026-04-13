@@ -12,9 +12,9 @@ class activation_coverage #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=
 			bins	sigmoid =	{2'b10};
 		}
 		cp_data_sign: coverpoint tr.data_in[0] {
-			bins	positive	=	{[1:16'h7FFF]};
+			bins	positive	=	{[16'h0001:16'h7FFF]};
 			bins	zero		=	{0};
-			bins	negative	=	{[16'h8000:-1]};
+			bins	negative	=	{[16'h8000:16'hFFFF]};
 		}
 		cross_fn_data: cross	cp_fn_sel, cp_data_sign;
 	endgroup

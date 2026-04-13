@@ -16,10 +16,10 @@ class activation_sequence #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=
 		`uvm_info("SEQ_START", $sformatf("Starting sequence with %0d transactions", num_transactions), UVM_LOW)
 
 		for(int i=0; i<num_transactions;i++) begin
-			req = activation_seq_item#(NUM_LANES, ACC_WIDTH)::type_id::create("req", this);
+			req = activation_seq_item#(NUM_LANES, ACC_WIDTH)::type_id::create("req");
 			
 			start_item(req);
-			if(!req.randomize() with {en == 1}) begin
+			if(!req.randomize() with {en == 1;}) begin
 				`uvm_error("SEQ_ERR", "Randomization failed!")
 			end
 			finish_item(req);
