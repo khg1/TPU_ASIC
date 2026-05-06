@@ -1,9 +1,10 @@
 module processing_element #(
 	parameter int ACT_WIDTH = 8,
-	parameter int ACC_WIDTH = 32
+	parameter int ACC_WIDTH = 32,
+	parameter int WT_WDITH = 8
 )(
 	input	logic					clk, resetn,
-	input	logic signed	[ACT_WIDTH-1:0]		weight,
+	input	logic signed	[WT_WIDTH-1:0]		weight,
 	input	logic					weight_load,
 	input	logic					en,
 	input	logic signed	[ACT_WIDTH-1:0]		act_in,
