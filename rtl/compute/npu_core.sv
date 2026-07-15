@@ -8,7 +8,7 @@ module npu_core #(
 	input	logic						clk, resetn,
 	input	logic	signed	[DATA_WIDTH-1:0]		data_in,
 	input	logic	[1:0]					vec_op_sel, act_fn_sel,
-	input	logic						valid,
+	input	logic						valid,				// asserted with RVALID and RREADY is high indicating new transaction
 	input	logic	signed	[ACC_WIDTH-1:0]			vect_scale,
 	output	logic	signed	[GRID_DIM-1:0][ACC_WIDTH-1:0]	data_out,
 	output	logic						ready
@@ -22,6 +22,9 @@ logic	signed	[GRID_DIM-1:0][WT_WIDTH-1:0]	weight_buff;
 logic	signed	[GRID_DIM-1:0][ACT_WIDTH-1:0]	input_buff;
 logic	signed	[GRID_DIM-1:0][ACC_WIDTH-1:0]	bias_buff;
 logic	signed	[GRID_DIM-1:0][ACC_WIDTH-1:0]	result_buff_syst, result_buff_vect;
+
+logic	signed	[WT_WIDTH-1:0]	weight_matrix	[GRID_DIM-1:0][GRID_DIM-1:0];
+logic	signed	[WT_WIDTH-1:0]	bias_vector	[GRID_DIM-1:0];
 
 logic		[7:0]	num_edge;
 logic			sig_act_valid;
@@ -49,7 +52,7 @@ systolic_array #(
 	.clk(clk),
 	.resetn(resetn),
 	.en(sig_syst_en),
-	.weight_load(ctrl_weight_load),
+	.capture_weight(ctrl_weight_load),
 	.weight_data(weight_buff),
 	.act_in(input_buff),
 	.result(result_buff_syst),
@@ -103,6 +106,8 @@ always_comb begin
 	endcase
 end
 
+logic [7:0] row_indicator = 0;
+
 always_ff @(posedge clk or negedge resetn) begin
 	if(!resetn) begin
 		sig_syst_en		<= 0;
@@ -115,21 +120,23 @@ always_ff @(posedge clk or negedge resetn) begin
 		unique case (current_state)
 			IDLE:	ctrl_weight_load <= 0;
 			CAPTURE: begin
-				if(num_edge < 2) begin
-					for(int i=0; i< (GRID_DIM >> 1); i++) begin
-						weight_buff[i + 4*num_edge] <= data_in[i*WT_WIDTH +: WT_WIDTH];
+				if(num_edge == (GRID_DIM >> 2))			row_indicator += 1;
+				if(row_indicator <= (GRID_DIM-1)) begin
+					for (int i = 0; i < (GRID_DIM >> 2); i++) begin
+						for(int j = 0; j < (GRID_DIM >> 1); j++) begin
+							weight_matrix[row_indicator][(4*i)+j] <= data_in[j*WT_WIDTH +: WT_WIDTH];
+							ctrl_weight_load <= 1;
+						end
+						if((j == GRID_DIM >> 1) && (row_indicator == (GRID_DIM-1)))	sig_syst_en <= 1;
+						else								sig_syst_en <= 0;
 					end
 				end
-				else if(num_edge >= 2 && num_edge <4) begin
-					ctrl_weight_load <= 1;
-					for(int i=0; i< (GRID_DIM >> 1); i++) begin
-						input_buff[i + 4*(num_edge-2)] <= data_in[i*ACT_WIDTH +: ACT_WIDTH];
+				else begin
+					for (int i = 0; i < (GRID_DIM >> 2); i++) begin
+						for(int j = 0; j < (GRID_DIM >> 1); j++) begin
+							bias_vector[(4*i)+j] <= data_in[j*WT_WIDTH +: WT_WIDTH];
+						end	
 					end
-				end
-				else if(num_edge >=4 && num_edge <12) begin
-					if(num_edge == 4)	sig_syst_en <= 1;
-					else			sig_syst_en <= 0;
-					bias_buff[num_edge - 4] <= data_in;
 				end
 			end
 			MAC:	ctrl_weight_load <= 0;

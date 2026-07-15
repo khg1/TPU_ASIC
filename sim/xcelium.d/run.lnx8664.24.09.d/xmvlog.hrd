@@ -1,0 +1,13 @@
+//
+// File created by:  xrun
+// Do not modify this file
+//
+-YDIR
+../rtl/compute
+-YDIR
+../tb
+-sv
+-INCDIR
+../rtl/compute
+-LIBEXT
+.sv

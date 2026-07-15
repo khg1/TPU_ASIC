@@ -1,0 +1,28 @@
+//
+// File created by:  xrun
+// Do not modify this file
+//
+-XLMODE
+./xcelium.d/run.lnx8664.24.09.d
+-RUNMODE
+-sv
+-INCDIR
+../rtl/compute
+-YDIR
+../rtl/compute
+-YDIR
+../tb
+-LIBEXT
+.sv
+../tb/tb_systolic.sv
+-CDSLIB
+./xcelium.d/run.lnx8664.24.09.d/cdsrun.lib
+-HDLVAR
+./xcelium.d/run.lnx8664.24.09.d/hdlrun.var
+-no_analogsolver
+-MESSAGES
+-UPDATE
+-XLLIBSTORE
+./xcelium.d/run.lnx8664.24.09.d/xllibs
+-ALLOWUNBOUND
+-hastop
