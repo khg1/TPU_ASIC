@@ -1,4 +1,4 @@
-*.log
+.log
 *.daidir
 simv
 simv.* 
