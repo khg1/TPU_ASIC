@@ -29,7 +29,9 @@ class activation_scoreboard #(parameter int NUM_LANES=16, parameter int ACC_WIDT
 
 			foreach(expected_out[i]) begin
 				if(exp_tr.fn_sel == 2'b00) begin
-					expected_out[i] = (exp_tr.data_in[i] < 0) ? 0 : exp_tr.data_in[i];
+					// signed'(): element select of a packed array is unsigned,
+					// so the bare compare against 0 would never be true
+					expected_out[i] = (signed'(exp_tr.data_in[i]) < 0) ? 0 : exp_tr.data_in[i];
 				end
 				else begin
 					logic	[(ACC_WIDTH/2)-1:0]		index = exp_tr.data_in[i][15:8];
