@@ -1,8 +1,8 @@
-TB_TOP = ../UVM/ACT_UNIT/tb_top.sv
-RTL_FILES = ../rtl/compute/activation_unit.sv
-IF_FILES = ../UVM/ACT_UNIT/activation_if.sv
-PKG_FILES = ../UVM/ACT_UNIT/activation_tb_pkg.sv
-SVA_FILES = ../SVA/activation_sva.sv
+TB_TOP = ../uvm/ACT_UNIT/tb_top.sv
+RTL_FILES = ../rtl/activation_unit.sv
+IF_FILES = ../uvm/ACT_UNIT/activation_if.sv
+PKG_FILES = ../uvm/ACT_UNIT/activation_tb_pkg.sv
+SVA_FILES = ../sva/activation_sva.sv
 
 TESTNAME = activation_test
 
@@ -12,13 +12,13 @@ DEBUG_FLAGS = -kdb -debug_access+all
 TIMESCALE = -timescale=1ns/1ps
 
 #=========== module-level testbenches (plain SV, no UVM) ===========
-SYSTOLIC_RTL = ../rtl/compute/shift_register.sv \
-               ../rtl/compute/processing_element.sv \
-               ../rtl/compute/systolic_array.sv
-VECTOR_RTL   = ../rtl/compute/vector_unit.sv
+SYSTOLIC_RTL = ../rtl/shift_register.sv \
+               ../rtl/processing_element.sv \
+               ../rtl/systolic_array.sv
+VECTOR_RTL   = ../rtl/vector_unit.sv
 NPU_RTL      = $(SYSTOLIC_RTL) $(VECTOR_RTL) \
-               ../rtl/compute/activation_unit.sv \
-               ../rtl/compute/npu_core.sv
+               ../rtl/activation_unit.sv \
+               ../rtl/npu_core.sv
 
 .PHONY: all compile run verdi clean tb_systolic tb_vector tb_npu tb_all
 
