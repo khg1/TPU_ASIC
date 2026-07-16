@@ -1,350 +1,210 @@
 `timescale 1ns/1ps
-`include "systolic_array.sv"
-`include "shift_register.sv"
+//=============================================================================
+// tb_systolic — self-checking testbench for systolic_array
+//
+// Protocol (mirrors npu_core):
+//   1. Assert weights_avail, then stream one weight row per cycle on
+//      weight_buffer, LAST row first (the array shifts rows downward
+//      internally, so W[GRID_DIM-1] is presented first and W[0] last).
+//   2. Drive act_buffer, hold en high, wait for the one-cycle done pulse.
+//   3. result[c] = sum over r of act[r] * W[r][c]
+//
+// Every test prints the input stimulus, the expected result from an
+// independent reference model, the actual DUT result, and PASS/FAIL per lane.
+//=============================================================================
 module tb_systolic();
 
-    // Parameters
-    localparam int GRID_DIM = 8;
-    localparam int ACT_WIDTH = 8;
-    localparam int WT_WIDTH = 8;
-    localparam int ACC_WIDTH = 32;
-    localparam int CLK_PERIOD = 10;
+	localparam int GRID_DIM		= 8;
+	localparam int ACT_WIDTH	= 8;
+	localparam int WT_WIDTH		= 8;
+	localparam int ACC_WIDTH	= 32;
+	localparam int CLK_PERIOD	= 10;
+	localparam int NUM_RANDOM_TESTS	= 20;
 
-    // Testbench signals
-    logic                                           clk;
-    logic                                           resetn;
-    logic                                           en;
-    logic                                           weights_avail;
-    logic signed [GRID_DIM-1:0][WT_WIDTH-1:0]     weight_buffer;
-    logic signed [GRID_DIM-1:0][ACT_WIDTH-1:0]    act_buffer;
-    logic signed [GRID_DIM-1:0][ACC_WIDTH-1:0]    result;
-    logic                                           done;
-    logic                                           ready;
+	logic						clk, resetn, en, weights_avail;
+	logic signed [GRID_DIM-1:0][WT_WIDTH-1:0]	weight_buffer;
+	logic signed [GRID_DIM-1:0][ACT_WIDTH-1:0]	act_buffer;
+	logic signed [GRID_DIM-1:0][ACC_WIDTH-1:0]	result;
+	logic						done, ready;
 
-    // Test vectors
-    logic signed [ACT_WIDTH-1:0]  test_activations [GRID_DIM];
-    logic signed [WT_WIDTH-1:0]   test_weights [GRID_DIM];
-    logic signed [ACC_WIDTH-1:0]  expected_result [GRID_DIM];
+	// Test stimulus / reference (plain ints so all arithmetic is signed)
+	int	test_weights	[GRID_DIM][GRID_DIM];	// [row][col]
+	int	test_acts	[GRID_DIM];
+	int	expected	[GRID_DIM];
 
-    // Test counters
-    int test_count = 0;
-    int pass_count = 0;
-    int fail_count = 0;
+	int	test_count = 0;
+	int	pass_count = 0;
+	int	fail_count = 0;
 
-    // Instantiate DUT
-    systolic_array #(
-        .GRID_DIM(GRID_DIM),
-        .ACT_WIDTH(ACT_WIDTH),
-        .WT_WIDTH(WT_WIDTH),
-        .ACC_WIDTH(ACC_WIDTH)
-    ) dut (
-        .clk(clk),
-        .resetn(resetn),
-        .en(en),
-        .weights_avail(weights_avail),
-        .weight_buffer(weight_buffer),
-        .act_buffer(act_buffer),
-        .result(result),
-        .done(done),
-        .ready(ready)
-    );
+	systolic_array #(
+		.GRID_DIM(GRID_DIM),
+		.ACT_WIDTH(ACT_WIDTH),
+		.WT_WIDTH(WT_WIDTH),
+		.ACC_WIDTH(ACC_WIDTH)
+	) dut (
+		.clk(clk),
+		.resetn(resetn),
+		.en(en),
+		.weights_avail(weights_avail),
+		.weight_buffer(weight_buffer),
+		.act_buffer(act_buffer),
+		.result(result),
+		.done(done),
+		.ready(ready)
+	);
 
-    // Clock generation
-    initial begin
-        clk = 0;
-        forever #(CLK_PERIOD/2) clk = ~clk;
-    end
+	initial begin
+		clk = 0;
+		forever #(CLK_PERIOD/2) clk = ~clk;
+	end
 
-    // Main testbench logic
-    initial begin
-        $display("========================================");
-        $display("  Systolic Array Testbench");
-        $display("========================================");
-        
-        // Test 1: Reset verification
-        //test_reset();
-        
-        // Test 2: State machine and ready signal
-        //test_state_machine();
-        
-        // Test 3: Single row computation (vector-vector dot product)
-        test_simple_dot_product();
-        
-        // Test 4: Multiple sequential operations
-        //test_sequential_operations();
-        
-        // Test 5: Edge cases (zeros, max values)
-        //test_edge_cases();
+	// Watchdog
+	initial begin
+		#2_000_000;
+		$display("[TB] TIMEOUT — simulation hung");
+		$finish;
+	end
 
-        // Print summary
-        print_test_summary();
-        $finish;
-    end
+	//====================== reference model ======================
+	function automatic void compute_expected();
+		for (int c = 0; c < GRID_DIM; c++) begin
+			expected[c] = 0;
+			for (int r = 0; r < GRID_DIM; r++)
+				expected[c] += test_acts[r] * test_weights[r][c];
+		end
+	endfunction
 
-    // ============================================
-    // Task: Reset Verification
-    // ============================================
-    task test_reset();
-        $display("\n[TEST 1] Reset Verification");
-        test_count++;
-        
-        resetn = 0;
-        en = 0;
-        weights_avail = 0;
-        weight_buffer = '{default: 0};
-        act_buffer = '{default: 0};
-        
-        repeat(5) @(posedge clk);
-        
-        // Check that module is in IDLE state after reset
-        if (ready == 1) begin
-            $display("✓ Module ready after reset");
-            pass_count++;
-        end else begin
-            $display("✗ Module not ready after reset");
-            fail_count++;
-        end
-        
-        if (done == 0) begin
-            $display("✓ Done signal is low after reset");
-            pass_count++;
-        end else begin
-            $display("✗ Done signal is high after reset");
-            fail_count++;
-        end
-        
-        resetn = 1;
-        repeat(2) @(posedge clk);
-    endtask
+	//====================== protocol tasks ======================
+	task automatic pulse_reset();
+		resetn		= 0;
+		en		= 0;
+		weights_avail	= 0;
+		weight_buffer	= '0;
+		act_buffer	= '0;
+		repeat (3) @(negedge clk);
+		resetn = 1;
+		@(negedge clk);
+	endtask
 
-    // ============================================
-    // Task: State Machine Verification
-    // ============================================
-    task test_state_machine();
-        $display("\n[TEST 2] State Machine and Ready Signal");
-        test_count++;
-        
-        resetn = 1;
-        @(posedge clk);
-        
-        // Check IDLE state
-        if (ready == 1) begin
-            $display("✓ Ready signal asserted in IDLE state");
-            pass_count++;
-        end else begin
-            $display("✗ Ready signal not asserted in IDLE");
-            fail_count++;
-        end
-        
-        // Trigger transition to LOAD
-        weights_avail = 1;
-        @(posedge clk);
-        
-        repeat(10) begin
-            @(posedge clk);
-        end
-        
-        // Check COMPUTE state (after LOAD completes)
-        if (ready == 0) begin
-            $display("✓ Ready signal deasserted when not in IDLE");
-            pass_count++;
-        end else begin
-            $display("✗ Ready signal still asserted outside IDLE");
-            fail_count++;
-        end
-        
-        weights_avail = 0;
-    endtask
+	task automatic load_weights();
+		do @(negedge clk); while (!ready);
+		weights_avail = 1;
+		@(negedge clk);					// array enters LOAD
+		for (int r = GRID_DIM-1; r >= 0; r--) begin	// last row first
+			for (int c = 0; c < GRID_DIM; c++)
+				weight_buffer[c] = WT_WIDTH'(test_weights[r][c]);
+			@(negedge clk);				// row sampled at next posedge
+		end
+		weights_avail = 0;
+	endtask
 
-    // ============================================
-    // Task: Simple Dot Product Test
-    // ============================================
-    task test_simple_dot_product();
-        $display("\n[TEST 3] Simple Dot Product Computation");
-        test_count++;
-        
-        // Initialize test vectors: weights = [1,2,3,4,5,6,7,8], acts = [1,1,1,1,1,1,1,1]
-        for (int i = 0; i < GRID_DIM; i++) begin
-            test_weights[i] = i + 1;
-            test_activations[i] = 1;
-            expected_result[i] = 8*(i + 1);  // Each PE at position i gets sum of weights up to i
-        end
-        
-        resetn = 1;
-        @(posedge clk);
-	resetn = 0;
-	en = 0;
-	@(posedge clk);
-	resetn = 1;
-        
-        // Load phase
-        weights_avail = 1;
-        load_weights(test_weights);
-        
-        // Compute phase
-        en = 1;
-        load_activations(test_activations);
-        
-        // Wait for computation to complete
-        wait(done == 1);
-        $display("✓ Computation completed (done signal asserted)");
-        pass_count++;
-        
-        @(posedge clk);
-        
-        // Verify results
-        verify_results(expected_result);
-        
-        en = 0;
-        weights_avail = 0;
-        repeat(5) @(posedge clk);
-    endtask
+	task automatic run_compute();
+		for (int r = 0; r < GRID_DIM; r++)
+			act_buffer[r] = ACT_WIDTH'(test_acts[r]);
+		en = 1;
+		wait (done === 1);
+		@(negedge clk);					// result registers stable
+		en = 0;
+	endtask
 
-    // ============================================
-    // Task: Sequential Operations
-    // ============================================
-    task test_sequential_operations();
-        $display("\n[TEST 4] Sequential Operations");
-        test_count++;
-        
-        resetn = 1;
-        
-        // First operation
-        for (int i = 0; i < GRID_DIM; i++) begin
-            test_weights[i] = 2;
-            test_activations[i] = 3;
-            expected_result[i] = 6;
-        end
-        
-        perform_operation(test_weights, test_activations, expected_result);
-        
-        // Second operation
-        for (int i = 0; i < GRID_DIM; i++) begin
-            test_weights[i] = 5;
-            test_activations[i] = 4;
-            expected_result[i] = 20;
-        end
-        
-        perform_operation(test_weights, test_activations, expected_result);
-        
-        $display("✓ Multiple sequential operations completed");
-        pass_count++;
-    endtask
+	//====================== reporting ======================
+	task automatic check_and_report(string test_name);
+		string	s;
+		bit	test_ok = 1;
 
-    // ============================================
-    // Task: Edge Cases
-    // ============================================
-    task test_edge_cases();
-        $display("\n[TEST 5] Edge Cases");
-        test_count++;
-        
-        resetn = 1;
-        
-        // Test with zeros
-        for (int i = 0; i < GRID_DIM; i++) begin
-            test_weights[i] = 0;
-            test_activations[i] = 5;
-            expected_result[i] = 0;
-        end
-        
-        perform_operation(test_weights, test_activations, expected_result);
-        $display("✓ Zero weights test passed");
-        pass_count++;
-        
-        // Test with maximum values
-        for (int i = 0; i < GRID_DIM; i++) begin
-            test_weights[i] = 127;
-            test_activations[i] = 127;
-            expected_result[i] = 127 * 127;
-        end
-        
-        perform_operation(test_weights, test_activations, expected_result);
-        $display("✓ Maximum values test passed");
-        pass_count++;
-    endtask
+		test_count++;
+		compute_expected();
 
-    // ============================================
-    // Helper Tasks
-    // ============================================
-    task load_weights(logic signed [WT_WIDTH-1:0] weights [GRID_DIM]);
-        for (int i = 0; i < GRID_DIM; i++) begin
-            weight_buffer[i] = weights[i];
-        end
-        
-        // Wait for weight loading to complete
-        repeat(GRID_DIM + 2) @(posedge clk);
-    endtask
+		$display("\n[TEST %0d] %s", test_count, test_name);
+		$display("  weight matrix W[row][0..%0d]:", GRID_DIM-1);
+		for (int r = 0; r < GRID_DIM; r++) begin
+			s = $sformatf("    row %0d:", r);
+			for (int c = 0; c < GRID_DIM; c++)
+				s = {s, $sformatf(" %5d", test_weights[r][c])};
+			$display("%s", s);
+		end
+		s = "  activations :";
+		for (int r = 0; r < GRID_DIM; r++)
+			s = {s, $sformatf(" %5d", test_acts[r])};
+		$display("%s", s);
 
-    task load_activations(logic signed [ACT_WIDTH-1:0] activations [GRID_DIM]);
-        for (int i = 0; i < GRID_DIM; i++) begin
-            act_buffer[i] = activations[i];
-        end
-    endtask
+		$display("  %-5s %12s %12s   %s", "lane", "expected", "actual", "status");
+		for (int c = 0; c < GRID_DIM; c++) begin
+			int actual = int'(result[c]);
+			if (actual === expected[c])
+				$display("  %-5d %12d %12d   PASS", c, expected[c], actual);
+			else begin
+				$display("  %-5d %12d %12d   FAIL", c, expected[c], actual);
+				test_ok = 0;
+			end
+		end
 
-    task perform_operation(
-        logic signed [WT_WIDTH-1:0] weights [GRID_DIM],
-        logic signed [ACT_WIDTH-1:0] activations [GRID_DIM],
-        logic signed [ACC_WIDTH-1:0] expected [GRID_DIM]
-    );
-        // Wait for ready
-        wait(ready == 1);
-        @(posedge clk);
-        
-        // Load weights
-        weights_avail = 1;
-        load_weights(weights);
-        weights_avail = 0;
-        
-        // Wait for ready again
-        wait(ready == 1);
-        @(posedge clk);
-        
-        // Perform computation
-        en = 1;
-        load_activations(activations);
-        
-        wait(done == 1);
-        @(posedge clk);
-        
-        // Verify
-        verify_results(expected);
-        
-        en = 0;
-    endtask
+		if (test_ok) begin
+			pass_count++;
+			$display("  => TEST PASSED");
+		end else begin
+			fail_count++;
+			$display("  => TEST FAILED");
+		end
+	endtask
 
-    task verify_results(logic signed [ACC_WIDTH-1:0] expected [GRID_DIM]);
-        logic mismatch = 0;
-        
-        for (int i = 0; i < GRID_DIM; i++) begin
-            if (result[i] !== expected[i]) begin
-                $display("✗ Result mismatch at index %0d: Got %0d, Expected %0d", 
-                    i, result[i], expected[i]);
-                mismatch = 1;
-                fail_count++;
-            end
-        end
-        
-        if (!mismatch) begin
-            $display("✓ All results verified correctly");
-            pass_count++;
-        end
-    endtask
+	task automatic run_test(string test_name);
+		load_weights();
+		run_compute();
+		check_and_report(test_name);
+	endtask
 
-    task print_test_summary();
-        $display("\n========================================");
-        $display("  Test Summary");
-        $display("========================================");
-        $display("Total Tests: %0d", test_count);
-        $display("Passed: %0d", pass_count);
-        $display("Failed: %0d", fail_count);
-        
-        if (fail_count == 0) begin
-            $display("\n✓ ALL TESTS PASSED");
-        end else begin
-            $display("\n✗ SOME TESTS FAILED");
-        end
-        $display("========================================\n");
-    endtask
+	//====================== test sequence ======================
+	initial begin
+		$display("========================================");
+		$display("  Systolic Array Testbench");
+		$display("========================================");
+
+		pulse_reset();
+
+		// Test 1: identical rows, unit activations — result[c] = 8*(c+1)
+		foreach (test_weights[r,c])	test_weights[r][c] = c + 1;
+		foreach (test_acts[r])		test_acts[r] = 1;
+		run_test("dot product (identical rows, unit activations)");
+
+		// Test 2: row/column orientation — one-hot activation selects row 2,
+		// distinct W[r][c] so a transposed load cannot pass
+		foreach (test_weights[r,c])	test_weights[r][c] = r*GRID_DIM + c;
+		foreach (test_acts[r])		test_acts[r] = (r == 2) ? 1 : 0;
+		run_test("orientation check (one-hot activation, distinct weights)");
+
+		// Test 3: signed weights and activations
+		foreach (test_weights[r,c])	test_weights[r][c] = (r - 4) * (c - 3);
+		foreach (test_acts[r])		test_acts[r] = (r % 2) ? -3 : 5;
+		run_test("signed weights and activations");
+
+		// Test 4: extreme values (checker pattern of +127 / -128)
+		foreach (test_weights[r,c])	test_weights[r][c] = ((r + c) % 2) ? -128 : 127;
+		foreach (test_acts[r])		test_acts[r] = (r % 2) ? 127 : -128;
+		run_test("extreme values (+127 / -128)");
+
+		// Test 5: all zeros
+		foreach (test_weights[r,c])	test_weights[r][c] = 0;
+		foreach (test_acts[r])		test_acts[r] = $urandom_range(0, 255) - 128;
+		run_test("zero weights");
+
+		// Tests 6..: random back-to-back operations
+		for (int t = 0; t < NUM_RANDOM_TESTS; t++) begin
+			foreach (test_weights[r,c])	test_weights[r][c] = $urandom_range(0, 255) - 128;
+			foreach (test_acts[r])		test_acts[r] = $urandom_range(0, 255) - 128;
+			run_test($sformatf("random stimulus %0d", t));
+		end
+
+		$display("\n========================================");
+		$display("  Test Summary");
+		$display("========================================");
+		$display("Total Tests: %0d", test_count);
+		$display("Passed:      %0d", pass_count);
+		$display("Failed:      %0d", fail_count);
+		if (fail_count == 0)	$display("\n*** ALL TESTS PASSED ***");
+		else			$display("\n*** SOME TESTS FAILED ***");
+		$display("========================================\n");
+		$finish;
+	end
 
 endmodule
-
