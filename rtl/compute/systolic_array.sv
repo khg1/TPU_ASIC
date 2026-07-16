@@ -122,6 +122,12 @@ always_ff @(posedge clk or negedge resetn) begin
 					done <= 1;
 					compute_counter <= '0;
 				end
+				// done must be a one-cycle pulse: the FSM only reaches
+				// IDLE (which also clears done) one edge after done
+				// rises, so without this clear done stays high for two
+				// cycles and the downstream vector/activation units run
+				// twice per operation.
+				else	done <= 0;
 			end
 			default: begin
 				compute_counter <= '0;
