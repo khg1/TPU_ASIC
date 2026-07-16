@@ -11,10 +11,12 @@ module processing_element #(
 	output	logic signed	[ACC_WIDTH-1:0]		acc_out
 );
 
-logic signed	[ACT_WIDTH-1:0]	q_weight;
+logic signed	[WT_WIDTH-1:0]	q_weight;
+logic signed	[ACT_WIDTH+WT_WIDTH-1:0]	product;
 logic signed	[ACC_WIDTH-1:0] d_acc;
 
-assign d_acc = ACC_WIDTH'(act_in * q_weight) + acc_in;
+assign product = act_in * q_weight;
+assign d_acc = ACC_WIDTH'(product) + acc_in;
 
 
 always_ff @(posedge clk or negedge resetn) begin

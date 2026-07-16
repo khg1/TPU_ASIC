@@ -15,13 +15,16 @@ module activation_unit #(
 typedef enum logic [1:0] {RELU=2'b00, GELU=2'b01, SIGMOID=2'b10} fn_sel_t;
 localparam int PIPE_STAGE = 3;
 localparam int LUT_DEPTH = 256;
+localparam int LUT_WIDTH = 16;	// LUT entries are Q8.8 regardless of ACC_WIDTH
 
-localparam logic signed [ACC_WIDTH-1:0]	Q_MAX = 16'h7FFF;
-localparam logic signed [ACC_WIDTH-1:0]	Q_MIN = 16'h8000;
+// Q8.8 saturation bounds; sign-extended so they stay correct when ACC_WIDTH > 16.
+// Contract: data_in is Q8.8, i.e. already saturated to [Q_MIN, Q_MAX] by the caller.
+localparam logic signed [ACC_WIDTH-1:0]	Q_MAX = ACC_WIDTH'(16'sh7FFF);
+localparam logic signed [ACC_WIDTH-1:0]	Q_MIN = ACC_WIDTH'(16'sh8000);
 
-logic signed [ACC_WIDTH-1:0] lut_gelu 		[0:LUT_DEPTH-1];
-logic signed [ACC_WIDTH-1:0] lut_sigmoid	[0:LUT_DEPTH-1];
-//logic signed [ACC_WIDTH-1:0] lut_exp		[0:LUT_DEPTH-1];
+logic signed [LUT_WIDTH-1:0] lut_gelu 		[0:LUT_DEPTH-1];
+logic signed [LUT_WIDTH-1:0] lut_sigmoid	[0:LUT_DEPTH-1];
+//logic signed [LUT_WIDTH-1:0] lut_exp		[0:LUT_DEPTH-1];
 
 initial begin
 	$readmemh("../LUT/lut/gelu_q88.hex", lut_gelu);
@@ -50,6 +53,7 @@ logic	[PIPE_STAGE-1:0]	busy;
 //logic	signed [2*ACC_WIDTH-1:0]	softmax_sum;
 
 logic		[NUM_LANES-1:0][7:0]			fraction;
+logic		[NUM_LANES-1:0][7:0]			idx_next;
 logic	signed	[NUM_LANES-1:0][ACC_WIDTH-1:0]		lut_next;
 logic	signed	[NUM_LANES-1:0][2*ACC_WIDTH-1:0]	delta;	
 logic	signed	[NUM_LANES-1:0][2*ACC_WIDTH-1:0]	corrected;
@@ -117,10 +121,14 @@ always_comb begin
 	//end
 	for (int i=0;i<NUM_LANES;i++) begin
 		fraction[i]  = s1_in[i][7:0];
-		if(s1_in[i][15:8] == 8'hFF)	lut_next[i]  = (s1_fn == GELU) ? lut_gelu[255] : lut_sigmoid[255];
-		else				lut_next[i]  = (s1_fn == GELU) ? lut_gelu[s1_in[i][15:8] + 1] : lut_sigmoid[s1_in[i][15:8] + 1];
-		delta[i]     = 32'(lut_next[i]) - 32'(s1_lut[i]);
-		corrected[i] = 32'(s1_lut[i]) + ((delta[i] * 32'(fraction[i]))>>>8);
+		// LUT addresses are the raw two's-complement upper byte (x = -128..-1 at 0x80..0xFF,
+		// x = 0..127 at 0x00..0x7F). The 8-bit wrap 0xFF -> 0x00 is the correct neighbour
+		// (x = -1 -> x = 0); the only edge to clamp is x = +127 (0x7F), whose successor
+		// would otherwise be x = -128 (0x80).
+		idx_next[i]  = (s1_in[i][15:8] == 8'h7F) ? 8'h7F : (s1_in[i][15:8] + 8'd1);
+		lut_next[i]  = (s1_fn == GELU) ? lut_gelu[idx_next[i]] : lut_sigmoid[idx_next[i]];
+		delta[i]     = (2*ACC_WIDTH)'(lut_next[i]) - (2*ACC_WIDTH)'(s1_lut[i]);
+		corrected[i] = (2*ACC_WIDTH)'(s1_lut[i]) + ((delta[i] * (2*ACC_WIDTH)'(signed'({1'b0, fraction[i]})))>>>8);
 	end
 end
 
@@ -137,9 +145,9 @@ always_ff @(posedge clk or negedge resetn) begin
 			unique case (s1_fn)
 				RELU: s2_out[i] <= s1_lut[i];
 				GELU, SIGMOID: begin
-					if(corrected[i] > 32'(Q_MAX))		s2_out[i] <= Q_MAX;
-					else if(corrected[i] < 32'(Q_MIN))	s2_out[i] <= Q_MIN;
-					else					s2_out[i] <= 16'(corrected[i]);
+					if(corrected[i] > (2*ACC_WIDTH)'(Q_MAX))	s2_out[i] <= Q_MAX;
+					else if(corrected[i] < (2*ACC_WIDTH)'(Q_MIN))	s2_out[i] <= Q_MIN;
+					else						s2_out[i] <= ACC_WIDTH'(corrected[i]);
 				end
 				//SOFTMAX: begin
 				//	if(softmax_sum != '0)	s2_out[i] <= 16'((32'(lut_exp[s1_lut[i][15:8]]) << 8) / softmax_sum);

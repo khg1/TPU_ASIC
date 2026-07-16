@@ -14,8 +14,9 @@ module vector_unit #(
 );
 
 typedef	enum	logic	[1:0] {ADD=2'b00, MUL=2'b01, SCALE=2'b10} op_sel_t;
-localparam	logic	signed	[ACC_WIDTH-1:0]	Q_MAX	= 16'h7FFF;
-localparam	logic	signed	[ACC_WIDTH-1:0] Q_MIN	= 16'h8000;
+// Q8.8 saturation bounds; sign-extended so they stay correct when ACC_WIDTH > 16
+localparam	logic	signed	[ACC_WIDTH-1:0]	Q_MAX	= ACC_WIDTH'(16'sh7FFF);
+localparam	logic	signed	[ACC_WIDTH-1:0] Q_MIN	= ACC_WIDTH'(16'sh8000);
 
 logic	signed	[NUM_LANES-1:0][ACC_WIDTH-1:0]	reg_a;
 logic	signed	[NUM_LANES-1:0][ACC_WIDTH-1:0]	reg_b;
@@ -40,12 +41,10 @@ assign	result_valid = reg_result_valid;
 
 always_ff @(posedge clk or negedge resetn) begin
 	if(!resetn) begin
-		for(int i=0;i<NUM_LANES;i++) begin
-			reg_a <= '0;
-			reg_b <= '0;
-		end
+		reg_a <= '0;
+		reg_b <= '0;
 		reg_scale <= '0;
-		reg_op <= '0;
+		reg_op <= op_sel_t'('0);
 		reg_valid <= 0;
 	end
 	else  begin
@@ -72,9 +71,9 @@ always_ff @(posedge clk or negedge resetn) begin
 		reg_result_valid <= reg_valid;
 		for(int i = 0; i<NUM_LANES; i++) begin
 			unique case (reg_op)
-				ADD:	reg_result[i] <= saturation(32'(reg_a[i]) + 32'(reg_b[i]));
-				MUL:	reg_result[i] <= saturation((32'(reg_a[i]) * 32'(reg_b[i])) >>> 8);
-				SCALE:	reg_result[i] <= saturation((32'(reg_a[i]) * 32'(reg_scale)) >>> 8);
+				ADD:	reg_result[i] <= saturation((2*ACC_WIDTH)'(reg_a[i]) + (2*ACC_WIDTH)'(reg_b[i]));
+				MUL:	reg_result[i] <= saturation(((2*ACC_WIDTH)'(reg_a[i]) * (2*ACC_WIDTH)'(reg_b[i])) >>> 8);
+				SCALE:	reg_result[i] <= saturation(((2*ACC_WIDTH)'(reg_a[i]) * (2*ACC_WIDTH)'(reg_scale)) >>> 8);
 				default: reg_result[i] <= reg_a[i];
 			endcase
 		end

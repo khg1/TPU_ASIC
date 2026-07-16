@@ -115,7 +115,7 @@ always_ff @(posedge clk or negedge resetn) begin
 			end
 			COMPUTE: begin
 				if(en_flag_shift_reg)	compute_counter <= compute_counter + 1;
-				if((compute_counter > GRID_DIM) && (compute_counter < (GRID_DIM << 1))) begin
+				if((compute_counter >= GRID_DIM) && (compute_counter < (GRID_DIM << 1))) begin
 					result[compute_counter - GRID_DIM] <= acc_inter[GRID_DIM][compute_counter-GRID_DIM];
 				end
 				else if(compute_counter >= ((GRID_DIM<<1) - 1)) begin
