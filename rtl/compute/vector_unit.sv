@@ -71,9 +71,11 @@ always_ff @(posedge clk or negedge resetn) begin
 		reg_result_valid <= reg_valid;
 		for(int i = 0; i<NUM_LANES; i++) begin
 			unique case (reg_op)
-				ADD:	reg_result[i] <= saturation((2*ACC_WIDTH)'(reg_a[i]) + (2*ACC_WIDTH)'(reg_b[i]));
-				MUL:	reg_result[i] <= saturation(((2*ACC_WIDTH)'(reg_a[i]) * (2*ACC_WIDTH)'(reg_b[i])) >>> 8);
-				SCALE:	reg_result[i] <= saturation(((2*ACC_WIDTH)'(reg_a[i]) * (2*ACC_WIDTH)'(reg_scale)) >>> 8);
+				// signed'() before widening: packed-array element selects are
+				// unsigned, so a bare width cast would zero-extend negatives
+				ADD:	reg_result[i] <= saturation((2*ACC_WIDTH)'(signed'(reg_a[i])) + (2*ACC_WIDTH)'(signed'(reg_b[i])));
+				MUL:	reg_result[i] <= saturation(((2*ACC_WIDTH)'(signed'(reg_a[i])) * (2*ACC_WIDTH)'(signed'(reg_b[i]))) >>> 8);
+				SCALE:	reg_result[i] <= saturation(((2*ACC_WIDTH)'(signed'(reg_a[i])) * (2*ACC_WIDTH)'(reg_scale)) >>> 8);
 				default: reg_result[i] <= reg_a[i];
 			endcase
 		end

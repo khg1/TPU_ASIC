@@ -52,11 +52,14 @@ logic	[PIPE_STAGE-1:0]	busy;
 //logic	signed [ACC_WIDTH-1:0]		softmax_max;
 //logic	signed [2*ACC_WIDTH-1:0]	softmax_sum;
 
-logic		[NUM_LANES-1:0][7:0]			fraction;
-logic		[NUM_LANES-1:0][7:0]			idx_next;
-logic	signed	[NUM_LANES-1:0][ACC_WIDTH-1:0]		lut_next;
-logic	signed	[NUM_LANES-1:0][2*ACC_WIDTH-1:0]	delta;	
-logic	signed	[NUM_LANES-1:0][2*ACC_WIDTH-1:0]	corrected;
+// Per-lane temporaries are unpacked arrays: an element select of a *packed*
+// array is always unsigned in SystemVerilog, which silently breaks the signed
+// interpolation/clamp arithmetic. Unpacked element selects keep their sign.
+logic		[7:0]			fraction	[NUM_LANES];
+logic		[7:0]			idx_next	[NUM_LANES];
+logic	signed	[ACC_WIDTH-1:0]		lut_next	[NUM_LANES];
+logic	signed	[2*ACC_WIDTH-1:0]	delta		[NUM_LANES];	
+logic	signed	[2*ACC_WIDTH-1:0]	corrected	[NUM_LANES];
 
 always_ff @(posedge clk or negedge resetn) begin
 	if(!resetn)	busy <= '0;
@@ -103,7 +106,7 @@ always_ff @(posedge clk or negedge resetn) begin
 		for(int i=0;i<NUM_LANES;i++) begin
 			s1_in[i] <= reg_in[i];
 			unique case (reg_fn)
-				RELU:	s1_lut[i] <= (reg_in[i] < '0) ? '0:reg_in[i];
+				RELU:	s1_lut[i] <= (signed'(reg_in[i]) < 0) ? '0:reg_in[i];
 				GELU:	s1_lut[i] <= lut_gelu[reg_in[i][15:8]];
 			        SIGMOID: s1_lut[i] <= lut_sigmoid[reg_in[i][15:8]];
 				//SOFTMAX: s1_lut[i] <= reg_in[i] - softmax_max;
@@ -127,8 +130,8 @@ always_comb begin
 		// would otherwise be x = -128 (0x80).
 		idx_next[i]  = (s1_in[i][15:8] == 8'h7F) ? 8'h7F : (s1_in[i][15:8] + 8'd1);
 		lut_next[i]  = (s1_fn == GELU) ? lut_gelu[idx_next[i]] : lut_sigmoid[idx_next[i]];
-		delta[i]     = (2*ACC_WIDTH)'(lut_next[i]) - (2*ACC_WIDTH)'(s1_lut[i]);
-		corrected[i] = (2*ACC_WIDTH)'(s1_lut[i]) + ((delta[i] * (2*ACC_WIDTH)'(signed'({1'b0, fraction[i]})))>>>8);
+		delta[i]     = (2*ACC_WIDTH)'(lut_next[i]) - (2*ACC_WIDTH)'(signed'(s1_lut[i]));
+		corrected[i] = (2*ACC_WIDTH)'(signed'(s1_lut[i])) + ((delta[i] * (2*ACC_WIDTH)'(signed'({1'b0, fraction[i]})))>>>8);
 	end
 end
 
