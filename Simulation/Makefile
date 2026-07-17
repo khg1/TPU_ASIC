@@ -20,7 +20,7 @@ NPU_RTL      = $(SYSTOLIC_RTL) $(VECTOR_RTL) \
                ../rtl/activation_unit.sv \
                ../rtl/npu_core.sv
 
-.PHONY: all compile run verdi clean tb_systolic tb_vector tb_npu tb_all
+.PHONY: all compile run verdi clean tb_systolic tb_vector tb_npu tb_all regress cov_report
 
 all: compile run
 
@@ -58,9 +58,33 @@ run:
 	./simv +UVM_TESTNAME=$(TESTNAME) +UVM_VERBOSITY=UVM_LOW \
 		-l sim.log +fsdb+autoflush -cm line+cond+fsm+tgl+branch+assert
 
+#=========== regression: N random seeds, coverage merged into simv.vdb ===========
+NUM_SEEDS ?= 10
+
+regress: compile
+	@echo "RUNNING REGRESSION: $(NUM_SEEDS) seeds"
+	@for s in $$(seq 1 $(NUM_SEEDS)); do \
+		echo "---- seed $$s ----"; \
+		./simv +UVM_TESTNAME=$(TESTNAME) +UVM_VERBOSITY=UVM_LOW \
+			+ntb_random_seed=$$s -l sim_seed$$s.log \
+			-cm line+cond+fsm+tgl+branch+assert -cm_name seed$$s || exit 1; \
+		if grep -Eq "UVM_ERROR *: *0" sim_seed$$s.log && grep -Eq "UVM_FATAL *: *0" sim_seed$$s.log; then \
+			echo "seed $$s PASS"; \
+		else \
+			echo "seed $$s FAIL — see sim_seed$$s.log"; exit 1; \
+		fi; \
+	done
+	@echo "ALL $(NUM_SEEDS) SEEDS PASSED"
+	$(MAKE) cov_report
+
+cov_report:
+	@echo "GENERATING COVERAGE REPORT (urg)"
+	urg -dir simv.vdb -report coverage_report
+	@echo "Open coverage_report/dashboard.html for the summary"
+
 verdi:
 	@echo "OPENING VERDI"
 	verdi -dbdir simv.daidir/ -cov -covdir simv.vdb -nologo &
 
 clean:
-	rm -rf simv simv.* simv_* *.log *.daidir verdi_config_file *.key *.h csrc novas.* verdiLog vfastLog *.fsdb vdCovLog
+	rm -rf simv simv.* simv_* *.log *.daidir verdi_config_file *.key *.h csrc novas.* verdiLog vfastLog *.fsdb vdCovLog coverage_report
