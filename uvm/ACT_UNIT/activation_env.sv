@@ -21,5 +21,6 @@ class activation_env #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=16) e
 		agt.mon.ap_in.connect(scb.exp_fifo.analysis_export);
 		agt.mon.ap_in.connect(cov.analysis_export);
 		agt.mon.ap_out.connect(scb.act_fifo.analysis_export);
+		agt.mon.ap_out.connect(cov.ap_out_imp);
 	endfunction
 endclass
