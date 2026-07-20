@@ -79,9 +79,9 @@ regress: compile
 
 cov_report:
 	@echo "GENERATING COVERAGE REPORT (urg)"
-	urg -dir simv.vdb -report coverage_report
-	@echo "Open coverage_report/dashboard.html for the summary"
-
+	urg -dir simv.vdb -report coverage_report -format text
+	@echo "Open coverage_report/dashboard.txt for the summary"
+	cat coverage_report/dashboard.txt
 verdi:
 	@echo "OPENING VERDI"
 	verdi -dbdir simv.daidir/ -cov -covdir simv.vdb -nologo &
