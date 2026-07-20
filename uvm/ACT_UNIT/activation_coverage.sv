@@ -84,9 +84,18 @@ class activation_coverage #(parameter int NUM_LANES=16, parameter int ACC_WIDTH=
 		option.per_instance = 1;
 
 		cp_out_value: coverpoint tr_out.data_out[0] {
-			bins q_max_out	= {16'h7FFF};	// clamped/passed high
-			bins q_min_out	= {16'h8000};	// clamped low
+			bins q_max_out	= {16'h7FFF};	// clamped/passed high (ReLU passes Q_MAX)
 			bins zero_out	= {16'h0000};	// ReLU of negatives, Sigmoid near 0
+
+			// Q_MIN (-128.0) output is UNREACHABLE for all three functions:
+			//   ReLU   -> always >= 0
+			//   Sigmoid-> (0, 1), always > 0
+			//   GELU   -> minimum is the ~-0.17 dip (~-44 in Q8.8)
+			// The activation unit's clamp-low branch therefore never fires.
+			// Assert the invariant instead of chasing an impossible bin:
+			// illegal_bins flags a real error if the output ever hits Q_MIN.
+			illegal_bins q_min_out = {16'h8000};
+
 			bins other	= default;	// not counted toward the goal
 		}
 	endgroup
